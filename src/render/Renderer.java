@@ -1,15 +1,18 @@
 package render;
 
 import lwjglutils.OGLTextRenderer;
+import lwjglutils.OGLTextureCube;
 import lwjglutils.ShaderUtils;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.glfw.GLFWCursorPosCallback;
 import org.lwjgl.glfw.GLFWKeyCallback;
 import org.lwjgl.glfw.GLFWMouseButtonCallback;
 import org.lwjgl.glfw.GLFWScrollCallback;
+import solids.Cube;
 import solids.Grid;
 import transforms.*;
 
+import java.io.IOException;
 import java.nio.DoubleBuffer;
 
 import static org.lwjgl.glfw.GLFW.*;
@@ -20,12 +23,15 @@ public class Renderer extends AbstractRenderer {
     double ox, oy;
     boolean mouseButton1 = false;
     private Mat4 projection;
-    private Mat4 model = new Mat4Identity();
-    private int shaderProgram, loc_uModel, loc_uView, loc_uProj;
-    private int loc_uModeObject;
+    private Mat4 model = new Mat4Identity(), skyModel = new Mat4Identity();
+    private int shaderProgram, shaderProgram2;
+    private int loc_uModel, loc_uView, loc_uProj, loc_uSkyModel;
+    private int loc2_uModel, loc2_uView, loc2_uProj, loc2_uSkyModel;
     private Grid grid;
+    private Cube cube;
     private int modeObject = 0;
     private int m = 500;
+    OGLTextureCube texture;
 
     public Renderer(int width, int height) {
         super(width, height);
@@ -33,14 +39,6 @@ public class Renderer extends AbstractRenderer {
 
     @Override
     public void init() {
-        shaderProgram = ShaderUtils.loadProgram("/shaders/Main/Main");
-
-        loc_uModel = glGetUniformLocation(shaderProgram, "uModel");
-        loc_uView = glGetUniformLocation(shaderProgram, "uView");
-        loc_uProj = glGetUniformLocation(shaderProgram, "uProj");
-
-        loc_uModeObject = glGetUniformLocation(shaderProgram, "uModeObject");
-
         camera = new Camera()
                 .withPosition(new Vec3D(10.f, 10f, 5f))
                 .withAzimuth(Math.PI * 1.25)
@@ -52,20 +50,26 @@ public class Renderer extends AbstractRenderer {
 
         glShadeModel(GL_SMOOTH);
 
-        renderGrid();
-
         glClearColor(0.2f, 0.2f, 0.2f, 1.0f);
+
+        initTexture();
+
+        initSkyBox();
+        initGrid();
 
         textRenderer = new OGLTextRenderer(width, height);
     }
 
     @Override
     public void display() {
-        glEnable(GL_DEPTH_TEST);
         glViewport(0, 0, width, height);
+
+        glDisable(GL_CULL_FACE);
+        glEnable(GL_DEPTH_TEST);
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+        drawSkybox();
         drawGrid();
 
         String text = "Some text";
@@ -176,8 +180,53 @@ public class Renderer extends AbstractRenderer {
         return cpCallbacknew;
     }
 
-    public void renderGrid() {
+    public void initTexture() {
+        String[] names = {
+                "textures/snow_positive_x.jpg",
+                "textures/snow_negative_x.jpg",
+                "textures/snow_positive_y.jpg",
+                "textures/snow_negative_y.jpg",
+                "textures/snow_positive_z.jpg",
+                "textures/snow_negative_z.jpg"
+        };
+
+        try {
+            texture = new OGLTextureCube(names);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void initGrid() {
+        shaderProgram = ShaderUtils.loadProgram("/shaders/Main/Main");
+
+        loc_uModel = glGetUniformLocation(shaderProgram, "uModel");
+        loc_uView = glGetUniformLocation(shaderProgram, "uView");
+        loc_uProj = glGetUniformLocation(shaderProgram, "uProj");
+
+        loc_uSkyModel = glGetUniformLocation(shaderProgram, "uSkyModel");
+
+        texture.bind(shaderProgram, "uTextureID", 0);
+
+        model = model.mul(new Mat4Transl(-0.5, -0.5, -0.5)).mul(new Mat4RotX(Math.PI / 2));
+
         grid = new Grid(m, m);
+    }
+
+    public void initSkyBox() {
+        shaderProgram2 = ShaderUtils.loadProgram("/shaders/Skybox/Main");
+
+        loc2_uModel = glGetUniformLocation(shaderProgram2, "uModel");
+        loc2_uView = glGetUniformLocation(shaderProgram2, "uView");
+        loc2_uProj = glGetUniformLocation(shaderProgram2, "uProj");
+
+        loc2_uSkyModel = glGetUniformLocation(shaderProgram2, "uSkyModel");
+
+        texture.bind(shaderProgram2, "uTextureID", 0);
+
+        skyModel = skyModel.mul(new Mat4Transl(-0.5, -0.5, -0.5)).mul(new Mat4Scale(40)).mul(new Mat4RotX(Math.PI / 2));
+
+        cube = new Cube();
     }
 
     void drawGrid() {
@@ -187,8 +236,20 @@ public class Renderer extends AbstractRenderer {
         glUniformMatrix4fv(loc_uView, false, camera.getViewMatrix().floatArray());
         glUniformMatrix4fv(loc_uProj, false, projection.floatArray());
 
-        glUniform1i(loc_uModeObject, modeObject);
+        glUniformMatrix4fv(loc_uSkyModel, false, skyModel.floatArray());
 
         grid.getBuffers().draw(GL_TRIANGLES, shaderProgram);
+    }
+
+    void drawSkybox() {
+        glUseProgram(shaderProgram2);
+
+        glUniformMatrix4fv(loc2_uModel, false, model.floatArray());
+        glUniformMatrix4fv(loc2_uView, false, camera.getViewMatrix().floatArray());
+        glUniformMatrix4fv(loc2_uProj, false, projection.floatArray());
+
+        glUniformMatrix4fv(loc2_uSkyModel, false, skyModel.floatArray());
+
+        cube.getBuffers().draw(GL_TRIANGLES, shaderProgram2);
     }
 }
