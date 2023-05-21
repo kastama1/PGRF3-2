@@ -72,7 +72,7 @@ public class Renderer extends AbstractRenderer {
         drawSkybox();
         drawGrid();
 
-        String text = "Some text";
+        String text = "Movement [WSAD] UP/DOWN [QE]";
 
         textRenderer.addStr2D(10, 20, text);
     }
